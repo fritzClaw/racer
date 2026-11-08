@@ -39,8 +39,10 @@
   <!-- Touch-Steuerung -->
   <div id="touch" hidden>
     <div class="touch-group left">
-      <button class="touch-btn" data-key="left" aria-label="Links">◀</button>
-      <button class="touch-btn" data-key="right" aria-label="Rechts">▶</button>
+      <div id="steer" class="steer" role="slider" aria-label="Lenkung" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
+        <span class="steer-hint l">‹</span><span class="steer-hint r">›</span>
+        <div id="steer-knob" class="steer-knob"></div>
+      </div>
     </div>
     <div class="touch-group right">
       <button class="touch-btn brake" data-key="down" aria-label="Bremse">▼</button>
@@ -63,7 +65,7 @@
           <li><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> Lenken</li>
           <li><kbd>C</kbd> Kamera: Cockpit / hinter dem Auto</li>
           <li><kbd>P</kbd> / <kbd>Esc</kbd> Pause · <kbd>M</kbd> Ton an/aus</li>
-          <li>Auf dem Handy: Knöpfe auf dem Bildschirm</li>
+          <li>Auf dem Handy: Lenk-Schieber links, Gas und Bremse rechts</li>
         </ul>
       </div>
     </div>

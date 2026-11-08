@@ -28,7 +28,8 @@
   // Eingabe
   // ------------------------------------------------------------------
   const keys = { up: false, down: false, left: false, right: false };
-  const touchKeys = { up: false, down: false, left: false, right: false };
+  const touchKeys = { up: false, down: false };
+  let touchSteer = 0;       // -1 (ganz links) bis 1 (ganz rechts), vom Lenk-Schieber
   const KEY_MAP = {
     ArrowUp: 'up', KeyW: 'up',
     ArrowDown: 'down', KeyS: 'down', Space: 'down',
@@ -94,6 +95,50 @@
     btn.addEventListener('pointerleave', off);
     btn.addEventListener('contextmenu', e => e.preventDefault());
   }
+
+  // Lenk-Schieber: Punkt mit dem Daumen nach links/rechts ziehen, lenkt stufenlos
+  const steerEl = $('steer');
+  const steerKnob = $('steer-knob');
+  let steerPointer = null;
+
+  function setSteerFromX(clientX) {
+    const rect = steerEl.getBoundingClientRect();
+    const half = (rect.width - steerKnob.offsetWidth) / 2;
+    const raw = Math.max(-1, Math.min(1, (clientX - (rect.left + rect.width / 2)) / half));
+    steerKnob.style.transform = `translateX(${raw * half}px)`;
+    // kleine tote Zone in der Mitte, außen etwas stärker (feinere Korrekturen um die Mitte)
+    const dead = 0.06;
+    const mag = Math.max(0, (Math.abs(raw) - dead) / (1 - dead));
+    touchSteer = Math.sign(raw) * Math.pow(mag, 1.25);
+    steerEl.setAttribute('aria-valuenow', String(Math.round(touchSteer * 100)));
+  }
+
+  function releaseSteer() {
+    steerPointer = null;
+    touchSteer = 0;
+    steerKnob.classList.remove('active');
+    steerKnob.style.transform = 'translateX(0px)';
+    steerEl.setAttribute('aria-valuenow', '0');
+  }
+
+  steerEl.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (steerPointer !== null) return;
+    steerPointer = e.pointerId;
+    try { steerEl.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+    steerKnob.classList.add('active');
+    setSteerFromX(e.clientX);
+    Sound.init();
+  });
+  steerEl.addEventListener('pointermove', e => {
+    if (e.pointerId === steerPointer) setSteerFromX(e.clientX);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    steerEl.addEventListener(type, e => {
+      if (e.pointerId === steerPointer) releaseSteer();
+    });
+  }
+  steerEl.addEventListener('contextmenu', e => e.preventDefault());
 
   function input(k) { return keys[k] || touchKeys[k]; }
 
@@ -366,7 +411,8 @@
   function controlPlayer(car, dt) {
     car.throttle = input('up') ? 1 : 0;
     car.brake = input('down') ? 1 : 0;
-    car.steerTarget = (input('right') ? 1 : 0) - (input('left') ? 1 : 0);
+    const keySteer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    car.steerTarget = Math.max(-1, Math.min(1, keySteer + touchSteer));
   }
 
   function wrapAngle(a) {
@@ -752,6 +798,7 @@
     }
     if (name !== 'race') {
       for (const k in touchKeys) touchKeys[k] = false;
+      releaseSteer();
       for (const b of document.querySelectorAll('.touch-btn')) b.classList.remove('active');
     }
   }
