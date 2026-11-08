@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#14161c">
+  <title>Turbo-Rennen</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Anzeige während des Rennens -->
+  <div id="hud" hidden>
+    <div class="hud-left">
+      <div class="hud-pos"><span id="hud-pos">4</span><small>/<span id="hud-count">4</span></small><span class="hud-label">Platz</span></div>
+      <ol id="hud-standings"></ol>
+    </div>
+    <div class="hud-center">
+      <div class="hud-lap">Runde <span id="hud-lap">1</span>/<span id="hud-laps">3</span></div>
+    </div>
+    <div class="hud-right">
+      <div class="hud-buttons">
+        <button id="btn-mute" class="icon-btn" aria-label="Ton an/aus">🔊</button>
+        <button id="btn-pause" class="icon-btn" aria-label="Pause">⏸</button>
+      </div>
+      <div class="hud-time" id="hud-time">0:00.00</div>
+      <div class="hud-small">Letzte Runde <span id="hud-last">–</span></div>
+      <div class="hud-small">Beste Runde <span id="hud-best">–</span></div>
+    </div>
+    <div class="hud-speed"><span id="hud-speed">0</span><small>km/h</small></div>
+  </div>
+
+  <div id="big-message" hidden></div>
+  <div id="wrong-way" hidden>Falsche Richtung!</div>
+
+  <!-- Touch-Steuerung -->
+  <div id="touch" hidden>
+    <div class="touch-group left">
+      <button class="touch-btn" data-key="left" aria-label="Links">◀</button>
+      <button class="touch-btn" data-key="right" aria-label="Rechts">▶</button>
+    </div>
+    <div class="touch-group right">
+      <button class="touch-btn brake" data-key="down" aria-label="Bremse">▼</button>
+      <button class="touch-btn gas" data-key="up" aria-label="Gas">▲</button>
+    </div>
+  </div>
+
+  <!-- Hauptmenü -->
+  <section id="screen-main" class="screen">
+    <div class="panel narrow">
+      <h1 class="title">Turbo<span>Rennen</span></h1>
+      <p class="subtitle">Wähle dein Auto, such dir eine Strecke aus und fahr gegen drei Computergegner um den Sieg.</p>
+      <button id="btn-start" class="btn primary big" data-primary>Rennen starten</button>
+      <div class="help">
+        <h3>Steuerung</h3>
+        <ul>
+          <li><kbd>↑</kbd> / <kbd>W</kbd> Gas geben</li>
+          <li><kbd>↓</kbd> / <kbd>S</kbd> Bremsen &amp; Rückwärts</li>
+          <li><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> Lenken</li>
+          <li><kbd>P</kbd> / <kbd>Esc</kbd> Pause · <kbd>M</kbd> Ton an/aus</li>
+          <li>Auf dem Handy: Knöpfe auf dem Bildschirm</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Autowahl -->
+  <section id="screen-car" class="screen" hidden>
+    <div class="panel wide">
+      <h2>Wähle dein Auto</h2>
+      <div id="car-list" class="card-grid cars"></div>
+      <div class="nav">
+        <button class="btn" data-goto="main">Zurück</button>
+        <button id="btn-car-next" class="btn primary" data-primary>Weiter</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Strecke und Schwierigkeit -->
+  <section id="screen-track" class="screen" hidden>
+    <div class="panel wide">
+      <h2>Wähle die Strecke</h2>
+      <div id="track-list" class="card-grid tracks"></div>
+      <h2>Stärke der Gegner</h2>
+      <div id="diff-list" class="segmented"></div>
+      <div class="nav">
+        <button class="btn" data-goto="car">Zurück</button>
+        <button id="btn-race" class="btn primary" data-primary>Los geht's!</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pause -->
+  <section id="screen-pause" class="screen dim" hidden>
+    <div class="panel narrow">
+      <h2>Pause</h2>
+      <button id="btn-resume" class="btn primary big" data-primary>Weiterfahren</button>
+      <button id="btn-restart" class="btn big">Neu starten</button>
+      <button id="btn-quit" class="btn big">Zum Hauptmenü</button>
+    </div>
+  </section>
+
+  <!-- Ergebnis -->
+  <section id="screen-results" class="screen dim" hidden>
+    <div class="panel">
+      <h2 id="results-title">Ergebnis</h2>
+      <p id="results-sub" class="subtitle"></p>
+      <table class="results">
+        <thead>
+          <tr><th>Platz</th><th>Fahrer</th><th class="hide-sm">Auto</th><th>Zeit</th><th class="hide-sm">Beste Runde</th></tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+      <div class="nav">
+        <button id="btn-menu" class="btn">Hauptmenü</button>
+        <button id="btn-again" class="btn primary" data-primary>Nochmal fahren</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="js/tracks.js"></script>
+  <script src="js/cars.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
