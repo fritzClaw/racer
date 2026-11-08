@@ -1,10 +1,10 @@
 # Turbo-Rennen
 
-Ein 2D-Autorennspiel für den Browser. Du siehst die Strecke von oben, wählst dein Auto und fährst gegen drei Computergegner um den Sieg.
+Ein 3D-Autorennspiel für den Browser. Du wählst dein Auto, schaust aus dem Cockpit (oder von hinter dem Auto) auf die Strecke und fährst gegen drei Computergegner um den Sieg.
 
 ## Spielen
 
-`index.html` im Browser öffnen, fertig. Es wird nichts installiert und nichts heruntergeladen.
+`index.html` im Browser öffnen, fertig. Es wird nichts installiert und nichts heruntergeladen, das Spiel läuft auch offline. Der Browser muss WebGL unterstützen (alle aktuellen Browser tun das).
 
 Alternativ über einen kleinen lokalen Webserver:
 
@@ -20,6 +20,15 @@ Dann <http://localhost:8000> öffnen. Über GitHub Pages lässt sich das Spiel g
 2. **Strecke wählen**: Sonnenring (leicht), Waldkurs (mittel) oder Bergpass (schwer)
 3. **Gegner einstellen**: Leicht, Mittel oder Schwer
 4. Countdown, dann **3 Runden**. Am Ende gibt es eine Ergebnisliste mit Platz, Zeit und bester Runde.
+
+## Kameras
+
+| Kamera | Ansicht |
+|---|---|
+| Cockpit (Standard) | Blick vom Fahrersitz: Motorhaube, Armaturenbrett und ein Lenkrad, das mitlenkt |
+| Verfolger | Kamera hinter dem Auto |
+
+Umschalten mit **C** oder dem 🎥-Knopf oben rechts. Die Wahl wird gespeichert.
 
 ## Die Autos
 
@@ -40,6 +49,7 @@ Die Werte wirken sich wirklich auf das Fahren aus: Endgeschwindigkeit, Beschleun
 | ↑ / W | Gas |
 | ↓ / S / Leertaste | Bremsen, im Stand rückwärts |
 | ← → / A D | Lenken |
+| C | Kamera wechseln |
 | P / Esc | Pause |
 | M | Ton an/aus |
 
@@ -58,9 +68,13 @@ Auf Handy und Tablet erscheinen Knöpfe auf dem Bildschirm.
 | `index.html` | Seite, Menüs und Anzeige |
 | `css/style.css` | Aussehen der Menüs und der Anzeige |
 | `js/tracks.js` | Strecken (Kontrollpunkte → glatte Kurve) |
-| `js/cars.js` | Autos: Werte, Physik-Umrechnung und Zeichnung |
+| `js/cars.js` | Autos: Werte, Physik-Umrechnung und Abmessungen |
 | `js/audio.js` | Soundeffekte, mit der Web Audio API erzeugt |
-| `js/game.js` | Fahrphysik, Computergegner, Rennablauf, Grafik und Menüsteuerung |
+| `js/render3d.js` | 3D-Darstellung: Strecke, Landschaft, Automodelle, Cockpit und Kameras |
+| `js/game.js` | Fahrphysik, Computergegner, Rennablauf, Anzeige und Menüsteuerung |
+| `vendor/three.min.js` | [Three.js](https://threejs.org) r159 (MIT-Lizenz, siehe `vendor/three.LICENSE`) |
+
+Die Spiellogik rechnet in der Ebene (x, y). `render3d.js` macht daraus die 3D-Welt (x → X, y → Z, Y zeigt nach oben).
 
 ### Eigene Strecke hinzufügen
 

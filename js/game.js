@@ -16,10 +16,8 @@
 
   const $ = id => document.getElementById(id);
   const canvas = $('game');
-  const ctx = canvas.getContext('2d');
 
   const tracks = TRACK_DEFS.map(buildTrack);
-  const grassPatterns = new Map();
 
   const sel = loadSelection();
   let race = null;
@@ -53,6 +51,8 @@
       else if (screen === 'track') showScreen('car');
     } else if (e.code === 'KeyM') {
       toggleMute();
+    } else if (e.code === 'KeyC') {
+      toggleView();
     } else if (e.code === 'Enter' && document.activeElement === document.body) {
       const btn = document.querySelector(`#screen-${screen} [data-primary]`);
       if (btn) btn.click();
@@ -503,179 +503,24 @@
   }
 
   // ------------------------------------------------------------------
-  // Darstellung
+  // Darstellung (3D)
   // ------------------------------------------------------------------
+  let viewMode = 'cockpit';
+  try {
+    if (localStorage.getItem('racer-view') === 'chase') viewMode = 'chase';
+  } catch (e) { /* egal */ }
+
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dpr = window.devicePixelRatio || 1;
     viewW = window.innerWidth;
     viewH = window.innerHeight;
-    canvas.width = Math.round(viewW * dpr);
-    canvas.height = Math.round(viewH * dpr);
-  }
-  window.addEventListener('resize', resize);
-  resize();
-
-  function grassPattern(track) {
-    if (grassPatterns.has(track)) return grassPatterns.get(track);
-    const c = document.createElement('canvas');
-    c.width = c.height = 256;
-    const g = c.getContext('2d');
-    g.fillStyle = track.def.grass;
-    g.fillRect(0, 0, 256, 256);
-    const rnd = seededRandom(track.def.seed * 7);
-    for (let i = 0; i < 1800; i++) {
-      const light = rnd() > 0.5;
-      g.fillStyle = light ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
-      g.fillRect(rnd() * 256, rnd() * 256, 2 + rnd() * 3, 2 + rnd() * 3);
-    }
-    const pat = ctx.createPattern(c, 'repeat');
-    grassPatterns.set(track, pat);
-    return pat;
+    Render3D.resize(viewW, viewH, dpr);
   }
 
-  function updateCamera(r, dt) {
-    const f = r.follow;
-    const speedRatio = Math.min(1, Math.abs(f.vF) / f.phys.maxSpeed);
-    const baseZoom = Math.max(0.45, Math.min(1.3, Math.min(viewW, viewH) / 760));
-    const zoom = baseZoom * (1 - 0.15 * speedRatio);
-    const tx = f.x + f.vx * 0.35;
-    const ty = f.y + f.vy * 0.35;
-    if (!r.cam) {
-      r.cam = { x: tx, y: ty, zoom };
-      return;
-    }
-    const k = 1 - Math.exp(-dt * 5);
-    r.cam.x += (tx - r.cam.x) * k;
-    r.cam.y += (ty - r.cam.y) * k;
-    r.cam.zoom += (zoom - r.cam.zoom) * (1 - Math.exp(-dt * 2));
-  }
-
-  function render(r, dt) {
-    updateCamera(r, dt);
-    const t = r.track;
-    const { x: cx, y: cy, zoom: z } = r.cam;
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = t.def.grass;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (viewW / 2 - cx * z), dpr * (viewH / 2 - cy * z));
-    const halfW = viewW / 2 / z, halfH = viewH / 2 / z;
-    const vx0 = cx - halfW, vy0 = cy - halfH, vx1 = cx + halfW, vy1 = cy + halfH;
-
-    ctx.fillStyle = grassPattern(t);
-    ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
-
-    // Strecke: Randsteine, Asphalt, Mittellinie
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.lineWidth = t.width + 40;
-    ctx.stroke(t.path);
-    ctx.strokeStyle = '#c8302c';
-    ctx.lineWidth = t.width + 18;
-    ctx.stroke(t.path);
-    ctx.lineCap = 'butt';
-    ctx.setLineDash([24, 24]);
-    ctx.strokeStyle = '#f2f2f2';
-    ctx.stroke(t.path);
-    ctx.setLineDash([]);
-    ctx.strokeStyle = '#55585e';
-    ctx.lineWidth = t.width;
-    ctx.stroke(t.path);
-    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-    ctx.lineWidth = t.width - 8;
-    ctx.stroke(t.path);
-    ctx.strokeStyle = '#55585e';
-    ctx.lineWidth = t.width - 12;
-    ctx.stroke(t.path);
-    ctx.setLineDash([40, 50]);
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 3;
-    ctx.stroke(t.path);
-    ctx.setLineDash([]);
-    ctx.lineCap = 'round';
-
-    drawStartLine(t);
-
-    // Bäume
-    for (const tree of t.trees) {
-      if (tree.x + tree.r < vx0 || tree.x - tree.r > vx1 || tree.y + tree.r < vy0 || tree.y - tree.r > vy1) continue;
-      ctx.fillStyle = 'rgba(0,0,0,0.22)';
-      ctx.beginPath();
-      ctx.arc(tree.x + 8, tree.y + 10, tree.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = tree.shade > 0.5 ? '#1f5a26' : '#2a6b2c';
-      ctx.beginPath();
-      ctx.arc(tree.x, tree.y, tree.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.beginPath();
-      ctx.arc(tree.x - tree.r * 0.3, tree.y - tree.r * 0.3, tree.r * 0.55, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Autos
-    for (const car of r.cars) {
-      if (car.x < vx0 - 60 || car.x > vx1 + 60 || car.y < vy0 - 60 || car.y > vy1 + 60) continue;
-      drawCar(ctx, car.def, car.x, car.y, car.angle, { braking: car.brake > 0.1 && car.vF > 10 });
-    }
-
-    // Markierung über dem eigenen Auto
-    if (r.player && !r.demo) {
-      const p = r.player;
-      const bob = Math.sin(performance.now() / 200) * 2;
-      ctx.save();
-      ctx.translate(p.x, p.y - 38 + bob);
-      ctx.fillStyle = '#ffb400';
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-8, -6);
-      ctx.lineTo(8, -6);
-      ctx.lineTo(0, 6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-
-  function drawStartLine(t) {
-    ctx.save();
-    ctx.translate(t.x[0], t.y[0]);
-    ctx.rotate(t.heading[0]);
-    const sq = 10;
-    const half = t.width / 2;
-    for (let row = 0; row < 2; row++) {
-      for (let i = 0; i * sq < t.width; i++) {
-        ctx.fillStyle = (i + row) % 2 === 0 ? '#ffffff' : '#111111';
-        ctx.fillRect(-sq + row * sq, -half + i * sq, sq, Math.min(sq, t.width - i * sq));
-      }
-    }
-    ctx.restore();
-
-    // Startaufstellung
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 2;
-    for (let slot = 0; slot < 4; slot++) {
-      const back = 70 + slot * 62;
-      const k = Math.round(back / t.spacing);
-      const i = (t.n - k) % t.n;
-      const lat = (slot % 2 === 0 ? -1 : 1) * t.width * 0.22;
-      ctx.save();
-      ctx.translate(t.x[i] + t.nx[i] * lat, t.y[i] + t.ny[i] * lat);
-      ctx.rotate(t.heading[i]);
-      ctx.beginPath();
-      ctx.moveTo(30, -16);
-      ctx.lineTo(30, 16);
-      ctx.moveTo(30, -16);
-      ctx.lineTo(18, -16);
-      ctx.moveTo(30, 16);
-      ctx.lineTo(18, 16);
-      ctx.stroke();
-      ctx.restore();
-    }
+  function toggleView() {
+    viewMode = viewMode === 'cockpit' ? 'chase' : 'cockpit';
+    try { localStorage.setItem('racer-view', viewMode); } catch (e) { /* egal */ }
+    if (isRacing()) flashMessage(viewMode === 'cockpit' ? 'Cockpit' : 'Verfolger', 0.9, true);
   }
 
   // ------------------------------------------------------------------
@@ -786,26 +631,25 @@
   function startDemo() {
     race = createRace(sel.track, -1, 'schwer', true);
     for (const c of race.cars) c.phys.maxSpeed *= 0.9;
+    // ein paar Sekunden vorspulen, damit im Menü schon gefahren wird
+    for (let i = 0; i < 6 / DT; i++) step(race, DT);
   }
 
   function buildCarCards() {
     const list = $('car-list');
     list.innerHTML = '';
+    const thumbs = Render3D.ready ? Render3D.carThumbnails(CAR_DEFS, 400, 220) : [];
     CAR_DEFS.forEach((def, i) => {
       const card = document.createElement('button');
       card.className = 'card';
       card.type = 'button';
-      const cv = document.createElement('canvas');
-      cv.width = 320;
-      cv.height = 150;
-      const g = cv.getContext('2d');
-      g.scale(2, 2);
-      g.translate(80, 37);
-      g.scale(2.4, 2.4);
-      drawCar(g, def, 0, 0, 0, {});
+      const img = document.createElement('img');
+      img.className = 'car-thumb';
+      img.alt = def.name;
+      if (thumbs[i]) img.src = thumbs[i];
       const s = def.stats;
       const bar = (label, v) => `<div class="stat"><span>${label}</span><div class="bar"><i style="width:${v * 10}%"></i></div></div>`;
-      card.appendChild(cv);
+      card.appendChild(img);
       card.insertAdjacentHTML('beforeend',
         `<div class="name">${def.name}</div>
          <div class="desc">${def.description}</div>
@@ -967,6 +811,7 @@
   $('btn-menu').addEventListener('click', () => showScreen('main'));
   $('btn-pause').addEventListener('click', () => pause());
   $('btn-mute').addEventListener('click', () => toggleMute());
+  $('btn-cam').addEventListener('click', () => toggleView());
   for (const b of document.querySelectorAll('[data-goto]')) {
     b.addEventListener('click', () => { Sound.click(); showScreen(b.dataset.goto); });
   }
@@ -997,8 +842,8 @@
         }
       }
     }
-    if (race) {
-      render(race, dt);
+    if (race && Render3D.ready) {
+      Render3D.render(race, dt, viewMode);
       updateHud(race, dt);
       if (screen === 'results') {
         resultsRefresh -= dt;
@@ -1011,6 +856,15 @@
     requestAnimationFrame(frame);
   }
 
+  try {
+    Render3D.init(canvas);
+  } catch (e) {
+    console.error(e);
+    $('webgl-error').hidden = false;
+    $('btn-start').disabled = true;
+  }
+  window.addEventListener('resize', resize);
+  resize();
   buildCarCards();
   buildTrackCards();
   showScreen('main');
