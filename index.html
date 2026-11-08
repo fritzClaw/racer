@@ -21,6 +21,7 @@
     </div>
     <div class="hud-right">
       <div class="hud-buttons">
+        <button id="btn-cam" class="icon-btn" aria-label="Kamera wechseln" title="Kamera wechseln (C)">🎥</button>
         <button id="btn-mute" class="icon-btn" aria-label="Ton an/aus">🔊</button>
         <button id="btn-pause" class="icon-btn" aria-label="Pause">⏸</button>
       </div>
@@ -52,12 +53,14 @@
       <h1 class="title">Turbo<span>Rennen</span></h1>
       <p class="subtitle">Wähle dein Auto, such dir eine Strecke aus und fahr gegen drei Computergegner um den Sieg.</p>
       <button id="btn-start" class="btn primary big" data-primary>Rennen starten</button>
+      <p id="webgl-error" class="error" hidden>Dein Browser unterstützt leider kein WebGL. Das brauchst du für die 3D-Ansicht.</p>
       <div class="help">
         <h3>Steuerung</h3>
         <ul>
           <li><kbd>↑</kbd> / <kbd>W</kbd> Gas geben</li>
           <li><kbd>↓</kbd> / <kbd>S</kbd> Bremsen &amp; Rückwärts</li>
           <li><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> Lenken</li>
+          <li><kbd>C</kbd> Kamera: Cockpit / hinter dem Auto</li>
           <li><kbd>P</kbd> / <kbd>Esc</kbd> Pause · <kbd>M</kbd> Ton an/aus</li>
           <li>Auf dem Handy: Knöpfe auf dem Bildschirm</li>
         </ul>
@@ -119,9 +122,11 @@
     </div>
   </section>
 
+  <script src="vendor/three.min.js"></script>
   <script src="js/tracks.js"></script>
   <script src="js/cars.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/render3d.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>
