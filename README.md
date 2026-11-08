@@ -54,7 +54,7 @@ Die Werte wirken sich wirklich auf das Fahren aus: Endgeschwindigkeit, Beschleun
 | P / Esc | Pause |
 | M | Ton an/aus |
 
-Auf Handy und Tablet erscheinen Knöpfe auf dem Bildschirm.
+Auf Handy und Tablet erscheint unten links ein **Lenk-Schieber**: Den Punkt mit dem Daumen nach links oder rechts ziehen. Je weiter, desto stärker lenkt das Auto, und beim Loslassen springt er zurück in die Mitte. Rechts liegen die Knöpfe für Gas und Bremse.
 
 ## Verkehr und Monstertruck
 
