@@ -246,6 +246,23 @@ table.results { width: 100%; border-collapse: collapse; font-size: 15px; }
 .hud-center { position: absolute; left: 50%; top: max(12px, env(safe-area-inset-top)); transform: translateX(-50%); text-align: center; }
 .hud-lap { font-size: 24px; font-weight: 900; background: rgba(0, 0, 0, 0.35); padding: 4px 16px; border-radius: 10px; white-space: nowrap; }
 
+.hud-crush {
+  margin-top: 8px;
+  display: inline-block;
+  font-size: 26px;
+  font-weight: 900;
+  font-style: italic;
+  color: #ffb400;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 14px;
+  border-radius: 10px;
+}
+.hud-crush small { font-size: 13px; font-style: normal; color: #f4f4f6; font-weight: 700; }
+.hud-crush.pop { animation: crushpop 0.35s ease-out; }
+@keyframes crushpop {
+  from { transform: scale(1.5); color: #ff4b2b; }
+  to { transform: scale(1); }
+}
 .hud-right { position: absolute; right: max(14px, env(safe-area-inset-right)); top: max(12px, env(safe-area-inset-top)); text-align: right; }
 .hud-time { font-size: 26px; font-weight: 800; margin-top: 6px; }
 .hud-small { font-size: 13px; color: #d5d8df; }

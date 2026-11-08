@@ -113,20 +113,27 @@
   function createRace(trackIndex, playerCar, diffKey, demo) {
     const track = tracks[trackIndex];
     const skill = DIFFICULTIES[diffKey];
-    const others = shuffle(CAR_DEFS.map((_, i) => i).filter(i => i !== playerCar)).slice(0, playerCar >= 0 ? 3 : 4);
+    // Den Monstertruck fährt nur der Spieler
+    const others = shuffle(CAR_DEFS.map((_, i) => i).filter(i => i !== playerCar && !CAR_DEFS[i].monster))
+      .slice(0, playerCar >= 0 ? 3 : 4);
     const names = shuffle(AI_DRIVERS);
     const entries = others.map((ci, i) => ({ def: CAR_DEFS[ci], name: names[i], isPlayer: false }));
     if (playerCar >= 0) entries.push({ def: CAR_DEFS[playerCar], name: 'Du', isPlayer: true });
 
-    const cars = entries.map((e, slot) => createCar(track, e, slot, e.isPlayer ? null : skill));
+    const cars = entries.map((e, slot) => createCar(track, e, gridPos(track, slot), e.isPlayer ? null : skill));
     const player = cars.find(c => c.isPlayer) || null;
+    const traffic = createTraffic(track);
     const r = {
       track,
       trackIndex,
       diffKey,
       playerCar,
       cars,
+      traffic,
+      all: cars.concat(traffic),
       player,
+      crushed: 0,
+      events: [],
       demo: !!demo,
       laps: demo ? Infinity : LAPS,
       state: demo ? 'race' : 'countdown',
@@ -143,21 +150,86 @@
       wrongWayT: 0,
       cam: null,
     };
-    for (const c of cars) c.race = r;
     updatePlaces(r);
     return r;
   }
 
-  function createCar(track, entry, slot, skill) {
+  /* Startplatz: zwei Reihen hinter der Ziellinie */
+  function gridPos(track, slot) {
+    const k = Math.round((70 + slot * 62) / track.spacing);
+    return {
+      idx: (track.n - k) % track.n,
+      progress: -k,
+      lat: (slot % 2 === 0 ? -1 : 1) * track.width * 0.22,
+    };
+  }
+
+  /* Verkehr gleichmäßig über die Strecke verteilen (nicht in der Startaufstellung). */
+  function createTraffic(track) {
+    const count = Math.round(track.length / 700);
+    const from = Math.ceil(500 / track.spacing);
+    const to = track.n - Math.ceil(450 / track.spacing);
+    const list = [];
+    for (let k = 0; k < count; k++) {
+      const idx = from + Math.floor((k + Math.random() * 0.6) * (to - from) / count);
+      const lat = (Math.random() - 0.5) * track.width * 0.6;
+      const def = TRAFFIC_DEFS[k % TRAFFIC_DEFS.length];
+      const car = createCar(track, { def, name: 'Verkehr', isPlayer: false }, { idx, progress: idx, lat }, null);
+      makeTraffic(car);
+      list.push(car);
+    }
+    return list;
+  }
+
+  function makeTraffic(car) {
+    car.traffic = true;
+    car.phys = {
+      maxSpeed: 170 + Math.random() * 100,
+      accel: 170,
+      brake: 600,
+      steerRate: 2.5,
+      grip: 8,
+      mass: 0.9,
+    };
+    car.ai.corner = 0.8;
+  }
+
+  /* Ein zerquetschtes Verkehrsauto weiter vorne (außer Sicht im Nebel) neu einsetzen. */
+  function respawnTraffic(r, car) {
+    const t = r.track;
+    const ref = r.player || r.follow;
+    let idx = (ref.idx + Math.round((2000 + Math.random() * 1500) / t.spacing)) % t.n;
+    for (let tries = 0; tries < 8; tries++) {
+      const lat = (Math.random() - 0.5) * t.width * 0.6;
+      const x = t.x[idx] + t.nx[idx] * lat;
+      const y = t.y[idx] + t.ny[idx] * lat;
+      if (r.all.every(o => o === car || (o.x - x) ** 2 + (o.y - y) ** 2 > 90 * 90)) {
+        car.x = x;
+        car.y = y;
+        car.ai.lane = car.ai.laneTarget = lat;
+        break;
+      }
+      idx = (idx + 10) % t.n;
+    }
+    car.idx = idx;
+    car.angle = t.heading[idx];
+    car.vF = car.phys.maxSpeed * 0.6;
+    car.vx = Math.cos(car.angle) * car.vF;
+    car.vy = Math.sin(car.angle) * car.vF;
+    car.steer = car.steerTarget = 0;
+    car.flat = 0;
+    car.vanish = 0;
+    car.ai.stuck = 0;
+    car.ai.reverse = 0;
+  }
+
+  function createCar(track, entry, pos, skill) {
     const phys = carPhysics(entry.def);
     if (skill) {
       phys.maxSpeed *= skill.speed;
       phys.accel *= skill.accel;
     }
-    const back = 70 + slot * 62;
-    const k = Math.round(back / track.spacing);
-    const idx = (track.n - k) % track.n;
-    const lat = (slot % 2 === 0 ? -1 : 1) * track.width * 0.22;
+    const { idx, progress, lat } = pos;
     return {
       def: entry.def,
       name: entry.name,
@@ -175,7 +247,7 @@
       throttle: 0,
       brake: 0,
       idx,
-      progress: -k,
+      progress,
       lap: -1,
       lapStart: 0,
       lapTimes: [],
@@ -185,6 +257,12 @@
       place: 0,
       onGrass: false,
       speedMul: 1,
+      traffic: false,
+      flat: 0,          // > 0: zerquetscht, Sekunden bis es weitergeht
+      invuln: 0,        // nach dem Wiederaufstehen kurz nicht zerquetschbar
+      vanish: 0,        // Verkehr: 0..1 beim Verschwinden
+      crushTilt: 0,
+      bumpT: 0,         // Monstertruck: Hüpfer beim Überfahren
       autopilot: !entry.isPlayer,
       ai: {
         corner: skill ? skill.corner : 0.9,
@@ -220,12 +298,14 @@
     }
 
     r.time += dt;
-    for (const car of r.cars) {
+    for (const car of r.all) {
+      if (car.flat > 0) continue;
       if (car.autopilot) controlAI(r, car, dt);
       else controlPlayer(car, dt);
     }
-    for (const car of r.cars) physics(r, car, dt);
+    for (const car of r.all) physics(r, car, dt);
     collisions(r);
+    updateCrushed(r, dt);
     for (const car of r.cars) laps(r, car);
     updatePlaces(r);
 
@@ -240,6 +320,46 @@
         r.resultsShown = true;
         showResults();
       }
+    }
+  }
+
+  /* Zerquetschte Autos: liegen platt, dann stehen Rennautos wieder auf und Verkehr verschwindet. */
+  function updateCrushed(r, dt) {
+    for (const car of r.all) {
+      if (car.bumpT > 0) car.bumpT = Math.max(0, car.bumpT - dt);
+      if (car.invuln > 0) car.invuln = Math.max(0, car.invuln - dt);
+      if (car.flat <= 0) continue;
+      car.flat -= dt;
+      car.vx = car.vy = car.vF = 0;
+      car.throttle = car.brake = 0;
+      if (car.traffic) {
+        car.vanish = Math.min(1, Math.max(0, 1 - car.flat / 0.6));
+        if (car.flat <= 0) respawnTraffic(r, car);
+      } else if (car.flat <= 0) {
+        car.flat = 0;
+        car.invuln = 2;
+        car.ai.stuck = 0;
+      }
+    }
+  }
+
+  function crush(r, victim, truck) {
+    victim.flat = victim.traffic ? 4 : 3;
+    victim.vx = victim.vy = victim.vF = 0;
+    victim.steer = victim.steerTarget = 0;
+    victim.crushTilt = (Math.random() - 0.5) * 0.3;
+    victim.vanish = 0;
+    truck.bumpT = 0.35;
+    truck.vx *= 0.93;
+    truck.vy *= 0.93;
+    r.events.push({ type: 'crush', x: victim.x, y: victim.y, color: victim.def.color });
+    if (truck.isPlayer && !r.demo) {
+      r.crushed++;
+      Sound.crush();
+      const el = $('hud-crush');
+      el.classList.remove('pop');
+      void el.offsetWidth;
+      el.classList.add('pop');
     }
   }
 
@@ -272,8 +392,8 @@
     // Ausweichen: steht ein Auto knapp vor uns, auf die andere Seite ziehen
     const fx = Math.cos(car.angle), fy = Math.sin(car.angle);
     ai.avoid *= Math.exp(-dt * 1.5);
-    for (const o of r.cars) {
-      if (o === car) continue;
+    for (const o of r.all) {
+      if (o === car || o.flat > 0) continue;
       const dx = o.x - car.x, dy = o.y - car.y;
       const ahead = dx * fx + dy * fy;
       const side = -dx * fy + dy * fx;
@@ -299,7 +419,7 @@
 
     // Gummiband: Gegner weit hinter dem Spieler holen ein bisschen auf, weit vorne bremsen sie leicht
     car.speedMul = 1;
-    if (r.player && !r.player.finished && !car.finished) {
+    if (!car.traffic && r.player && !r.player.finished && !car.finished) {
       const gap = (r.player.progress - car.progress) / t.n;
       car.speedMul = Math.max(0.94, Math.min(1.05, 1 + gap * 0.12));
     }
@@ -348,8 +468,10 @@
   }
 
   function physics(r, car, dt) {
+    if (car.flat > 0) return;
     const t = r.track;
     const p = car.phys;
+    const offroad = !!car.def.monster;
 
     // Position auf der Strecke und Fortschritt
     const near = nearestOnTrack(t, car.x, car.y, car.idx);
@@ -365,7 +487,7 @@
     let vR = -car.vx * fy + car.vy * fx;
 
     let maxV = p.maxSpeed * car.speedMul;
-    if (car.onGrass) maxV *= 0.5;
+    if (car.onGrass) maxV *= offroad ? 0.82 : 0.5;
 
     if (car.throttle > 0) {
       if (vF < 0) vF += p.brake * car.throttle * dt;
@@ -382,7 +504,7 @@
     vF -= vF * 0.05 * dt;
 
     // Seitliche Haftung: Rutschen wird abgebaut, auf Gras weniger
-    const grip = p.grip * (car.onGrass ? 0.55 : 1);
+    const grip = p.grip * (car.onGrass ? (offroad ? 0.85 : 0.55) : 1);
     vR *= Math.exp(-grip * dt);
 
     car.vx = fx * vF - fy * vR;
@@ -419,11 +541,12 @@
   }
 
   function collisions(r) {
-    const cars = r.cars;
+    const cars = r.all;
     for (let i = 0; i < cars.length; i++) {
       for (let j = i + 1; j < cars.length; j++) {
         const a = cars[i], b = cars[j];
-        if (Math.abs(a.x - b.x) > 60 || Math.abs(a.y - b.y) > 60) continue;
+        if (a.flat > 0 || b.flat > 0) continue;  // über platte Autos fährt man einfach drüber
+        if (Math.abs(a.x - b.x) > 70 || Math.abs(a.y - b.y) > 70) continue;
         const ca = carCircles(a), cb = carCircles(b);
         let best = null;
         for (const p of ca) {
@@ -437,6 +560,13 @@
           }
         }
         if (!best) continue;
+        // Monstertruck fährt über andere Autos drüber und zerquetscht sie
+        const truck = a.def.monster ? a : b.def.monster ? b : null;
+        const victim = truck === a ? b : a;
+        if (truck && !victim.def.monster && victim.invuln <= 0 && Math.abs(truck.vF) > 25) {
+          crush(r, victim, truck);
+          continue;
+        }
         const ma = a.phys.mass, mb = b.phys.mass;
         const total = ma + mb;
         // Auseinanderschieben
@@ -568,6 +698,8 @@
     setText('hud-last', p.lapTimes.length ? fmtTime(p.lapTimes[p.lapTimes.length - 1]) : (curLap !== null ? '–' : '–'));
     setText('hud-best', fmtTime(p.bestLap));
     setText('hud-speed', String(Math.round(Math.abs(p.vF) * KMH)));
+    $('hud-crush').hidden = !p.def.monster;
+    if (p.def.monster) setText('hud-crush-count', String(r.crushed));
 
     const key = r.standings.map(c => c.name).join('|');
     if (hudCache.standings !== key) {
@@ -785,7 +917,8 @@
     const place = p.place;
     $('results-title').textContent = place === 1 ? 'Sieg! Du bist Erster!' : `Du bist ${place}. geworden`;
     const best = p.bestLap !== null ? ` · Beste Runde ${fmtTime(p.bestLap)}` : '';
-    $('results-sub').textContent = `${r.track.def.name} · ${DIFFICULTIES[r.diffKey].label} · ${p.def.name}${best}`;
+    const crushed = p.def.monster ? ` · ${r.crushed} ${r.crushed === 1 ? 'Auto' : 'Autos'} zerquetscht` : '';
+    $('results-sub').textContent = `${r.track.def.name} · ${DIFFICULTIES[r.diffKey].label} · ${p.def.name}${best}${crushed}`;
     $('results-body').innerHTML = r.standings.map(c => {
       const time = c.finished
         ? (c === r.standings[0] ? fmtTime(c.finishTime) : `+${fmtTime(c.finishTime - r.standings[0].finishTime)}`)

@@ -129,8 +129,50 @@ const Sound = (() => {
     src.stop(t + 0.3);
   }
 
+  /* Zerquetschen: dumpfer Schlag, Knirschen und ein absinkender Blechton */
+  function crush() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const thump = ctx.createOscillator();
+    const tg = ctx.createGain();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(110, t);
+    thump.frequency.exponentialRampToValueAtTime(40, t + 0.25);
+    tg.gain.setValueAtTime(0.45, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    thump.connect(tg).connect(master);
+    thump.start(t);
+    thump.stop(t + 0.32);
+
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(1800, t);
+    f.frequency.exponentialRampToValueAtTime(300, t + 0.35);
+    f.Q.value = 1.2;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.35, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    src.connect(f).connect(ng).connect(master);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + 0.42);
+
+    const metal = ctx.createOscillator();
+    const mg = ctx.createGain();
+    metal.type = 'square';
+    metal.frequency.setValueAtTime(260, t);
+    metal.frequency.exponentialRampToValueAtTime(70, t + 0.3);
+    mg.gain.setValueAtTime(0.07, t);
+    mg.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    metal.connect(mg).connect(master);
+    metal.start(t);
+    metal.stop(t + 0.32);
+  }
+
   return {
     init,
+    crush,
     startEngine,
     stopEngine,
     updateEngine,

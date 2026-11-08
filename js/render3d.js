@@ -17,14 +17,17 @@ const Render3D = (() => {
     low:     { bodyH: 6,  cabLen: 0.32, cabOff: -0.06, cabH: 5.5, cabW: 0.78 },
     heavy:   { bodyH: 10, cabLen: 0.46, cabOff: -0.04, cabH: 9,   cabW: 0.88 },
     classic: { bodyH: 8,  cabLen: 0.40, cabOff: -0.06, cabH: 7,   cabW: 0.82 },
+    monster: { bodyH: 9,  cabLen: 0.36, cabOff: -0.10, cabH: 9,   cabW: 0.62, bodyW: 0.7,
+               clearance: 16, wheelR: 11, wheelW: 8 },
   };
-  const CLEARANCE = 3.5;
-  const WHEEL_R = 5;
 
   let renderer = null;
   let scene, camera, sky, maxAniso = 1;
   const worlds = new Map();     // Strecke -> Gruppe mit Strecke und Landschaft
-  const carViews = new Map();   // Auto-ID -> 3D-Modell
+  const viewPool = new Map();   // Auto-ID -> Liste von 3D-Modellen (werden wiederverwendet)
+  const carView = new WeakMap(); // Auto -> 3D-Modell
+  let lastRace = null;
+  const debris = [];
   let activeWorld = null;
   const cam = { yaw: 0, init: false, follow: null, shake: 0 };
 
@@ -417,9 +420,14 @@ const Render3D = (() => {
     return shadowTex;
   }
 
-  function buildCarModel(def) {
-    const { length: L, width: W } = carSize(def);
+  /* lite: vereinfachtes Modell für den Verkehr (weniger Einzelteile, schneller zu zeichnen) */
+  function buildCarModel(def, lite) {
+    const { length: L, width: Wfull } = carSize(def);
     const sp = SHAPES[def.shape] || SHAPES.classic;
+    const CLEARANCE = sp.clearance || 3.5;
+    const WHEEL_R = sp.wheelR || 5;
+    const wheelW = sp.wheelW || 4;
+    const W = Wfull * (sp.bodyW || 1);
     const group = new T.Group();
     const paint = new T.MeshPhongMaterial({ color: def.color, shininess: 90, specular: 0x555555 });
     const accent = new T.MeshPhongMaterial({ color: def.accent, shininess: 60 });
@@ -441,12 +449,14 @@ const Render3D = (() => {
 
     // Karosserie mit Stoßstangen
     group.add(box(L - 2, sp.bodyH, W, paint, 0, CLEARANCE + sp.bodyH / 2, 0));
-    group.add(box(2, sp.bodyH * 0.6, W - 2, dark, L / 2 - 1, CLEARANCE + sp.bodyH * 0.3, 0));
-    group.add(box(2, sp.bodyH * 0.6, W - 2, dark, -L / 2 + 1, CLEARANCE + sp.bodyH * 0.3, 0));
+    if (!lite) {
+      group.add(box(2, sp.bodyH * 0.6, W - 2, dark, L / 2 - 1, CLEARANCE + sp.bodyH * 0.3, 0));
+      group.add(box(2, sp.bodyH * 0.6, W - 2, dark, -L / 2 + 1, CLEARANCE + sp.bodyH * 0.3, 0));
+    }
 
     // Lichter
     for (const z of [-W / 2 + 3.5, W / 2 - 3.5]) {
-      group.add(box(0.6, 2.2, 4, head, L / 2 - 0.8, CLEARANCE + sp.bodyH * 0.68, z));
+      if (!lite) group.add(box(0.6, 2.2, 4, head, L / 2 - 0.8, CLEARANCE + sp.bodyH * 0.68, z));
       group.add(box(0.6, 2.2, 4, tail, -L / 2 + 0.8, CLEARANCE + sp.bodyH * 0.68, z));
     }
 
@@ -457,7 +467,29 @@ const Render3D = (() => {
     group.add(upper);
 
     // Bauform-Details
-    if (def.shape === 'sport') {
+    if (lite) {
+      // Verkehr: keine Details
+    } else if (def.shape === 'monster') {
+      // Fahrgestell, Achsen, Auspuffrohre, Lichtleiste, Zierstreifen
+      group.add(box(L * 0.8, 4, Wfull * 0.45, dark, 0, CLEARANCE - 2, 0));
+      for (const x of [L / 2 - WHEEL_R - 2, -(L / 2 - WHEEL_R - 2)]) {
+        const axle = new T.Mesh(new T.CylinderGeometry(1.5, 1.5, Wfull - wheelW, 8).rotateX(Math.PI / 2), dark);
+        axle.position.set(x, WHEEL_R, 0);
+        group.add(axle);
+        group.add(beam(new T.Vector3(x, WHEEL_R, -Wfull * 0.3), new T.Vector3(x * 0.8, CLEARANCE, -W * 0.35), 1.6, accent));
+        group.add(beam(new T.Vector3(x, WHEEL_R, Wfull * 0.3), new T.Vector3(x * 0.8, CLEARANCE, W * 0.35), 1.6, accent));
+      }
+      for (const z of [-W / 2 - 0.15, W / 2 + 0.15]) group.add(box(L - 6, 2, 0.3, accent, 0, CLEARANCE + sp.bodyH * 0.45, z));
+      const chrome = new T.MeshPhongMaterial({ color: 0xd8dde3, shininess: 120, specular: 0xffffff });
+      for (const z of [-cabW / 2 - 1.5, cabW / 2 + 1.5]) {
+        const pipe = new T.Mesh(new T.CylinderGeometry(0.9, 0.9, 14, 8), chrome);
+        pipe.position.set(cabX - cabLen / 2 - 1.5, bodyTop + 7, z);
+        upper.add(pipe);
+      }
+      const lamp = new T.MeshBasicMaterial({ color: 0xffe08a });
+      for (const z of [-4.5, -1.5, 1.5, 4.5]) upper.add(box(1.4, 1.6, 2.2, lamp, cabX + cabLen * 0.3, bodyTop + sp.cabH + 2.2, z));
+      upper.add(box(1.6, 0.8, cabW * 0.9, dark, cabX + cabLen * 0.3, bodyTop + sp.cabH + 1.2, 0));
+    } else if (def.shape === 'sport') {
       group.add(box(L - 2.2, 0.4, 4, accent, 0, bodyTop + 0.2, 0));
       upper.add(box(cabLen * 0.8, 0.3, 4, accent, cabX - cabLen * 0.05, bodyTop + sp.cabH + 1.35, 0));
       upper.add(box(4, 1, W, dark, -L / 2 + 3, bodyTop + 4.5, 0));
@@ -481,19 +513,38 @@ const Render3D = (() => {
     }
 
     // Räder (vordere lenken mit)
-    const wheelGeo = new T.CylinderGeometry(WHEEL_R, WHEEL_R, 4, 14).rotateX(Math.PI / 2);
-    const hubGeo = new T.CylinderGeometry(2.3, 2.3, 4.4, 6).rotateX(Math.PI / 2);
-    const hubMat = new T.MeshLambertMaterial({ color: 0xb8bcc4 });
+    const wheelGeo = new T.CylinderGeometry(WHEEL_R, WHEEL_R, wheelW, def.shape === 'monster' ? 18 : 14).rotateX(Math.PI / 2);
+    const hubR = def.shape === 'monster' ? 5 : 2.3;
+    const hubGeo = new T.CylinderGeometry(hubR, hubR, wheelW + 0.4, 6).rotateX(Math.PI / 2);
+    const hubMat = def.shape === 'monster' ? paint : new T.MeshLambertMaterial({ color: 0xb8bcc4 });
     const wheels = [];
     const frontPivots = [];
-    const wx = L / 2 - 9;
+    const wx = def.shape === 'monster' ? L / 2 - WHEEL_R - 2 : L / 2 - 9;
+    const wz = def.shape === 'monster' ? Wfull / 2 - wheelW / 2 : W / 2 - 1.5;
     for (const x of [wx, -wx]) {
-      for (const z of [-W / 2 + 1.5, W / 2 - 1.5]) {
+      for (const z of [-wz, wz]) {
+        if (lite) {
+          const m = new T.Mesh(wheelGeo, dark);
+          m.position.set(x, WHEEL_R, z);
+          group.add(m);
+          continue;
+        }
         const pivot = new T.Group();
         pivot.position.set(x, WHEEL_R, z);
         const wheel = new T.Group();
         wheel.add(new T.Mesh(wheelGeo, dark));
         wheel.add(new T.Mesh(hubGeo, hubMat));
+        if (def.shape === 'monster') {
+          // grobes Profil auf den Riesenrädern
+          const lug = new T.BoxGeometry(2.2, 1.6, wheelW + 0.6);
+          for (let k = 0; k < 10; k++) {
+            const a = (k / 10) * Math.PI * 2;
+            const m = new T.Mesh(lug, dark);
+            m.position.set(Math.cos(a) * (WHEEL_R - 0.2), Math.sin(a) * (WHEEL_R - 0.2), 0);
+            m.rotation.z = a;
+            wheel.add(m);
+          }
+        }
         pivot.add(wheel);
         group.add(pivot);
         wheels.push(wheel);
@@ -502,7 +553,10 @@ const Render3D = (() => {
     }
 
     const eye = new T.Vector3(cabX + cabLen * 0.1, bodyTop + sp.cabH * 0.9, 0);
-    return { group, upper, wheels, frontPivots, tail, eye, spin: 0, cockpit: null, sp, L, W, cabW, cabLen, cabX, bodyTop };
+    return {
+      group, upper, wheels, frontPivots, tail, eye, spin: 0, cockpit: null, sp, L, W, cabW, cabLen, cabX, bodyTop,
+      wheelR: WHEEL_R, squash: 0,
+    };
   }
 
   /* Armaturenbrett, Lenkrad und Dachrahmen für die Sicht aus dem Fahrersitz. */
@@ -550,15 +604,80 @@ const Render3D = (() => {
     view.steeringWheel = wheel;
   }
 
+  /* Jedes Auto bekommt ein 3D-Modell aus dem Pool; nach einem Rennen werden alle wieder frei. */
   function viewFor(car) {
-    let v = carViews.get(car.def.id);
+    let v = carView.get(car);
+    if (v) return v;
+    let list = viewPool.get(car.def.id);
+    if (!list) viewPool.set(car.def.id, list = []);
+    v = list.find(x => !x.inUse);
     if (!v) {
-      v = buildCarModel(car.def);
-      v.group.visible = false;
+      v = buildCarModel(car.def, !!car.def.lite);
       scene.add(v.group);
-      carViews.set(car.def.id, v);
+      list.push(v);
     }
+    v.inUse = true;
+    v.squash = 0;
+    v.group.visible = true;
+    carView.set(car, v);
     return v;
+  }
+
+  function releaseViews() {
+    for (const list of viewPool.values()) {
+      for (const v of list) {
+        v.inUse = false;
+        v.group.visible = false;
+      }
+    }
+  }
+
+  /* Trümmerteile beim Zerquetschen */
+  const debrisGeo = () => debrisGeo.g || (debrisGeo.g = new T.BoxGeometry(3, 1.5, 3));
+  function spawnDebris(ev) {
+    for (let i = 0; i < 9; i++) {
+      let d = debris.find(x => x.life <= 0);
+      if (!d) {
+        if (debris.length >= 60) break;
+        d = { mesh: new T.Mesh(debrisGeo(), new T.MeshLambertMaterial()), life: 0 };
+        scene.add(d.mesh);
+        debris.push(d);
+      }
+      d.mesh.material.color.set(i % 3 === 0 ? 0x1c2a3c : ev.color);
+      const a = Math.random() * Math.PI * 2;
+      const sp = 40 + Math.random() * 70;
+      d.vx = Math.cos(a) * sp;
+      d.vz = Math.sin(a) * sp;
+      d.vy = 60 + Math.random() * 60;
+      d.mesh.position.set(ev.x, ROAD_Y + 6, ev.y);
+      d.mesh.scale.setScalar(0.6 + Math.random() * 0.9);
+      d.mesh.visible = true;
+      d.life = 1.2;
+    }
+  }
+
+  function updateDebris(dt) {
+    for (const d of debris) {
+      if (d.life <= 0) continue;
+      d.life -= dt;
+      d.vy -= 260 * dt;
+      const p = d.mesh.position;
+      p.x += d.vx * dt;
+      p.y = Math.max(ROAD_Y + 0.6, p.y + d.vy * dt);
+      p.z += d.vz * dt;
+      if (p.y <= ROAD_Y + 0.6) {
+        d.vx *= 0.9;
+        d.vz *= 0.9;
+        d.vy = Math.abs(d.vy) * 0.3;
+      }
+      d.mesh.rotation.x += d.vx * dt * 0.05;
+      d.mesh.rotation.y += d.vz * dt * 0.05;
+      if (d.life <= 0) d.mesh.visible = false;
+    }
+  }
+
+  function bumpOffset(car) {
+    return car.bumpT > 0 ? Math.sin((1 - car.bumpT / 0.35) * Math.PI) * 7 : 0;
   }
 
   // ------------------------------------------------------------------
@@ -580,16 +699,31 @@ const Render3D = (() => {
       cam.init = false;
     }
 
-    const used = new Set();
+    if (race !== lastRace) {
+      releaseViews();
+      for (const d of debris) { d.life = 0; d.mesh.visible = false; }
+      lastRace = race;
+    }
+    while (race.events.length) {
+      const ev = race.events.shift();
+      if (ev.type === 'crush') spawnDebris(ev);
+    }
+    updateDebris(dt);
+
     const follow = race.follow;
     const cockpit = mode === 'cockpit' && !race.demo;
-    for (const car of race.cars) {
+    for (const car of race.all) {
       const v = viewFor(car);
-      used.add(v);
-      v.group.visible = true;
-      v.group.position.set(car.x, ROAD_Y, car.y);
+      v.group.position.set(car.x, ROAD_Y + bumpOffset(car), car.y);
       v.group.rotation.y = -car.angle;
-      v.spin -= (car.vF * dt) / WHEEL_R;
+      // Platt drücken (schnell) und wieder aufrichten (langsamer)
+      const target = car.flat > 0 ? 1 : 0;
+      v.squash += (target - v.squash) * (1 - Math.exp(-dt * (target ? 30 : 8)));
+      const shrink = 1 - (car.vanish || 0);
+      v.group.scale.set((1 + 0.12 * v.squash) * shrink, Math.max(0.01, (1 - 0.8 * v.squash) * shrink), (1 + 0.18 * v.squash) * shrink);
+      v.group.rotation.z = car.crushTilt * v.squash;
+      v.group.visible = shrink > 0.02;
+      v.spin -= (car.vF * dt) / v.wheelR;
       for (const w of v.wheels) w.rotation.z = v.spin;
       for (const p of v.frontPivots) p.rotation.y = -car.steer * 0.45;
       const braking = car.brake > 0.1 && car.vF > 10;
@@ -602,7 +736,6 @@ const Render3D = (() => {
         if (inside) v.steeringWheel.rotation.x = car.steer * 1.7;
       }
     }
-    for (const v of carViews.values()) if (!used.has(v)) v.group.visible = false;
 
     updateCamera(race, dt, cockpit ? 'cockpit' : 'chase');
     sky.position.copy(camera.position);
@@ -626,7 +759,7 @@ const Render3D = (() => {
       cam.shake = car.onGrass ? Math.min(1, Math.abs(car.vF) / 200) : cam.shake * Math.exp(-dt * 8);
       const sx = (Math.random() - 0.5) * cam.shake * 0.8;
       const sy = (Math.random() - 0.5) * cam.shake * 0.8;
-      camera.position.set(car.x + fx * e.x, ROAD_Y + e.y + sy, car.y + fz * e.x);
+      camera.position.set(car.x + fx * e.x, ROAD_Y + e.y + sy + bumpOffset(car), car.y + fz * e.x);
       camera.position.x += -fz * sx;
       camera.position.z += fx * sx;
       // Im Hochformat (großes Sichtfeld) etwas nach unten schauen, damit weniger Himmel zu sehen ist
@@ -642,10 +775,12 @@ const Render3D = (() => {
       while (d < -Math.PI) d += Math.PI * 2;
       cam.yaw += d * (1 - Math.exp(-dt * 5));
       const cx = Math.cos(cam.yaw), cz = Math.sin(cam.yaw);
-      const dist = race.demo ? 110 : 88;
-      const height = race.demo ? 42 : 32;
+      // Große Autos (Monstertruck): Kamera höher und weiter weg
+      const extra = Math.max(0, v.bodyTop + v.sp.cabH - 20);
+      const dist = (race.demo ? 110 : 88) + extra * 1.6;
+      const height = (race.demo ? 42 : 32) + extra * 1.3;
       camera.position.set(car.x - cx * dist, ROAD_Y + height, car.y - cz * dist);
-      camera.lookAt(car.x + cx * 40, ROAD_Y + 10, car.y + cz * 40);
+      camera.lookAt(car.x + cx * 40, ROAD_Y + 10 + extra * 0.6, car.y + cz * 40);
       baseFov = 62;
     }
     cam.init = true;
@@ -678,12 +813,16 @@ const Render3D = (() => {
     sun.position.set(-0.4, 1, 0.8);
     s.add(sun);
     const camT = new T.PerspectiveCamera(30, w / h, 1, 1000);
-    camT.position.set(44, 34, 56);
-    camT.lookAt(0, 7, 0);
+    const dir = new T.Vector3(44, 34, 56).normalize();
     const out = defs.map(def => {
       const v = buildCarModel(def);
       v.group.rotation.y = 0.35;
       s.add(v.group);
+      // Kamera so weit weg, dass das ganze Auto ins Bild passt
+      const sphere = new T.Box3().setFromObject(v.group).getBoundingSphere(new T.Sphere());
+      const dist = (sphere.radius / Math.sin((15 * Math.PI) / 180)) * 0.62;
+      camT.position.copy(sphere.center).addScaledVector(dir, dist);
+      camT.lookAt(sphere.center);
       r.render(s, camT);
       const url = c.toDataURL('image/png');
       s.remove(v.group);
