@@ -724,7 +724,7 @@ const World = (() => {
   function addTree(x, y, r, kind) {
     if (arena && Math.abs(x - arena.x) < arena.w / 2 + 4 && Math.abs(y - arena.y) < arena.d / 2 + 4) return;
     const s = 0.75 + r() * 0.6;
-    const t = { x, y, s, kind, r: 0.45 * s, c: r() };
+    const t = { x, y, s, type: kind, r: 0.45 * s, c: r() };
     trees.push(t);
     chunkAt(x, y).trees.push(t);
     solidGrid.add(t, x - 1, y - 1, x + 1, y + 1);
@@ -829,9 +829,9 @@ const World = (() => {
       if (!ch.trees.length) continue;
       const n = ch.trees.length;
       const it = new THREE.InstancedMesh(trunk, matTrunk, n);
-      const round = ch.trees.filter(t => t.kind !== 1), cone = ch.trees.filter(t => t.kind === 1);
+      const round = ch.trees.filter(t => t.type !== 1), cone = ch.trees.filter(t => t.type === 1);
       ch.trees.forEach((t, i) => {
-        const th = t.kind === 1 ? 3 * t.s : t.kind === 2 ? 1.8 * t.s : 3.4 * t.s;
+        const th = t.type === 1 ? 3 * t.s : t.type === 2 ? 1.8 * t.s : 3.4 * t.s;
         q.setFromAxisAngle(v.set(0, 1, 0), t.c * 6.28);
         m.compose(v.set(t.x, 0, t.y), q, s.set(t.s, th, t.s));
         it.setMatrixAt(i, m);
@@ -840,7 +840,7 @@ const World = (() => {
       if (round.length) {
         const ir = new THREE.InstancedMesh(crownRound, matCrown, round.length);
         round.forEach((t, i) => {
-          const fruit = t.kind === 2;
+          const fruit = t.type === 2;
           const rad = (fruit ? 2.2 : 3.2) * t.s;
           const y = (fruit ? 1.8 : 3.4) * t.s + rad * 0.75;
           q.setFromAxisAngle(v.set(0, 1, 0), t.c * 6.28);
@@ -874,7 +874,7 @@ const World = (() => {
   };
 
   function addObstacle(kind, x, y, dx, dy, hl, extra) {
-    const o = Object.assign({ kind, x, y, dx, dy, hl, hw: OBST[kind].hw, h: OBST[kind].h }, extra || {});
+    const o = Object.assign({ isObstacle: true, kind, x, y, dx, dy, hl, hw: OBST[kind].hw, h: OBST[kind].h }, extra || {});
     obstacles.push(o);
     const e = hl + 1;
     solidGrid.add(o, x - e, y - e, x + e, y + e);
@@ -1263,11 +1263,61 @@ const World = (() => {
   }
 
   // ------------------------------------------------------------ Startpunkt
-  function spawnPoint() {
-    // Neben dem Reitplatz, Blick zum Parcours
-    const a = arena;
-    const x = a.x - a.w / 2 - 10, y = a.y;
-    return { x, y, heading: Math.atan2(a.x - x, -(a.y - y)) };
+  // Start ist in Wissersheim: auf der Dorfstraße nahe der Kirche.
+  let spawnCache = null;
+  function findSpawn() {
+    const home = places.find(p => p.name === 'Wissersheim') || places[0];
+    const church = landmarks.find(l => l.name.startsWith('St. Martinus (Wissersheim'));
+    const cx = church ? church.x : home.x, cy = church ? church.y : home.y;
+    const cands = [];
+    for (const r of roads) {
+      if (r.cls < 2 || r.cls > 4) continue;
+      const p = r.pts;
+      for (let i = 0; i + 3 < p.length; i += 2) {
+        const x0 = p[i], y0 = p[i + 1], x1 = p[i + 2], y1 = p[i + 3];
+        const len = Math.hypot(x1 - x0, y1 - y0);
+        if (len < 14) continue;
+        const dx = (x1 - x0) / len, dy = (y1 - y0) / len;
+        for (let s2 = 7; s2 < len - 7; s2 += 4) {
+          const x = x0 + dx * s2, y = y0 + dy * s2;
+          const d = Math.hypot(x - cx, y - cy);
+          if (d < 400) cands.push({ x, y, dx, dy, d });
+        }
+      }
+    }
+    cands.sort((a, b) => a.d - b.d);
+    for (const c of cands) {
+      // beide Pferde nebeneinander, mit Platz drumherum
+      const ok = [-1.3, 1.3].every(o => {
+        const x = c.x - c.dy * o, y = c.y + c.dx * o;
+        return insideBoundary(x, y) && !nearBuilding(x, y, 2.5) && !nearSolid(x, y, 2);
+      });
+      if (ok) {
+        // Blick Richtung Dorfmitte (entlang der Straße)
+        let dx = c.dx, dy = c.dy;
+        if ((home.x - c.x) * dx + (home.y - c.y) * dy < 0) { dx = -dx; dy = -dy; }
+        return { x: c.x, y: c.y, dx, dy };
+      }
+    }
+    return { x: home.x, y: home.y, dx: 0, dy: -1 };
+  }
+
+  function nearSolid(x, y, r) {
+    let hit = false;
+    solidGrid.query(x - r - 3, y - r - 3, x + r + 3, y + r + 3, o => {
+      const ox = o.x, oy = o.y;
+      const rr = o.isObstacle ? o.hl + r : (o.r || 0.5) + r;
+      if (Math.hypot(ox - x, oy - y) < rr) { hit = true; return false; }
+    });
+    return hit;
+  }
+
+  /** Startplatz für Reiterin i (0 oder 1). */
+  function spawnPoint(i) {
+    if (!spawnCache) spawnCache = findSpawn();
+    const c = spawnCache;
+    const o = i === 1 ? 1.3 : i === 0 ? -1.3 : 0;
+    return { x: c.x - c.dy * o, y: c.y + c.dx * o, heading: Math.atan2(c.dx, -c.dy) };
   }
 
   // ------------------------------------------------------------ Aufbau
@@ -1347,7 +1397,7 @@ const World = (() => {
       res.building = true;
     });
     solidGrid.query(x0, y0, x1, y1, o => {
-      if (o.kind) {
+      if (o.isObstacle) {
         // Hindernis (gedrehter Quader)
         const rx = pos.x - o.x, ry = pos.y - o.y;
         const u = rx * o.dx + ry * o.dy, v = -rx * o.dy + ry * o.dx;

@@ -22,6 +22,8 @@ Dann <http://localhost:8000/rider/> öffnen.
 - **Springen**: Auf den Feldwegen liegen Baumstämme, Strohballen, Holzricks und Hecken. Am Gestüt Lindenkreuz gibt es einen Reitplatz mit einem bunten Parcours.
 - **Füttern**: Äpfel und Möhren geben dem Pferd neue Kraft. Sie wachsen nach zwei Minuten nach.
 
+Los geht es in **Wissersheim** auf der Dorfstraße bei der Kirche St. Martinus. Im Pausenmenü bringt „Zurück nach Wissersheim" beide wieder dorthin.
+
 Die beiden spielen **zusammen**: Hufeisen und entdeckte Orte zählen für beide. Der Fortschritt wird im Browser gespeichert, beim nächsten Mal geht es dort weiter, wo ihr aufgehört habt. „Neu anfangen" im Hauptmenü löscht alles.
 
 ## Reiten

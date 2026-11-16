@@ -34,9 +34,12 @@
   function loadSave() {
     try {
       const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-      if (s && s.v === 1) return s;
+      if (s && s.v === 1) {
+        if (s.start !== 'wissersheim') { s.pos = null; s.start = 'wissersheim'; }
+        return s;
+      }
     } catch (e) { /* egal */ }
-    return { v: 1, shoes: [], disc: [], jumps: 0, eaten: 0, pos: null };
+    return { v: 1, start: 'wissersheim', shoes: [], disc: [], jumps: 0, eaten: 0, pos: null };
   }
   function writeSave() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* egal */ }
@@ -206,8 +209,8 @@
     }
     players = [];
     $('views').innerHTML = '';
-    const spawn = World.spawnPoint();
     for (let i = 0; i < setup.count; i++) {
+      const spawn = World.spawnPoint(setup.count === 2 ? i : -1);
       const cfg = setup.riders[i];
       const hairIdx = cfg.hair === 'red' ? 1 : 0;
       const look = RIDERS[hairIdx];
@@ -220,11 +223,10 @@
       const cam = new THREE.PerspectiveCamera(60, 1, 0.3, 1500);
       cam.layers.enable(0);
       for (let j = 0; j < setup.count; j++) if (j !== i) cam.layers.enable(1 + j);
-      const side = setup.count === 2 ? (i === 0 ? -1.6 : 1.6) : 0;
       const p = {
         idx: i, name: cfg.name, horseName: cfg.horse, hair: cfg.hair, color: look.color,
-        model, cam,
-        x: spawn.x + Math.cos(spawn.heading) * side, y: spawn.y + Math.sin(spawn.heading) * side, heading: spawn.heading,
+        model, cam, tag,
+        x: spawn.x, y: spawn.y, heading: spawn.heading,
         speed: 0, gait: 0, stamina: 1, jumpT: -1, jumpY: 0, jumpH: 1.2, steer: 0,
         camYaw: spawn.heading, camPos: new THREE.Vector3(), camInit: false,
         msgT: 0, bannerT: 0, regionT: 0, region: '', lastCleared: null, bumpT: 0, hintT: 0, surface: 'ground',
@@ -527,7 +529,7 @@
     // Kollision
     const pos = { x: p.x, y: p.y };
     const res = World.collide(pos, HORSE_R, p.jumpY);
-    p.x = pos.x; p.y = pos.y;
+    if (Number.isFinite(pos.x) && Number.isFinite(pos.y)) { p.x = pos.x; p.y = pos.y; } else { p.x = ox; p.y = oy; }
     if (res.building) {
       p.speed *= Math.pow(0.1, dt);
       if (p.bumpT <= 0 && Math.abs(p.speed) > 3) { Sound.bump(); p.bumpT = 0.6; }
@@ -690,7 +692,9 @@
       clouds.position.set(p.cam.position.x, 0, p.cam.position.z);
       // die andere Reiterin ausblenden, wenn sie direkt vor der Kamera steht
       for (const o of players) {
-        o.model.root.visible = o === p || Math.hypot(o.x - p.cam.position.x, o.y - p.cam.position.z) > 2.6;
+        const d = Math.hypot(o.x - p.cam.position.x, o.y - p.cam.position.z);
+        o.model.root.visible = o === p || d > 2.6;
+        o.tag.visible = d > 8;          // Namensschild nur, wenn sie weiter weg ist
       }
       const y = H - r.y - r.h;
       renderer.setViewport(r.x, y, r.w, r.h);
@@ -745,7 +749,7 @@
   $('btn-start').addEventListener('click', () => { Sound.init(); buildSetup(); show('setup'); });
   $('btn-reset').addEventListener('click', () => {
     if (!confirm('Wirklich neu anfangen? Alle gesammelten Hufeisen und entdeckten Orte werden gelöscht.')) return;
-    save = { v: 1, shoes: [], disc: [], jumps: 0, eaten: 0, pos: null };
+    save = { v: 1, start: 'wissersheim', shoes: [], disc: [], jumps: 0, eaten: 0, pos: null };
     writeSave();
     if (worldReady) {
       for (const s of World.items.shoes) s.got = false;
@@ -848,11 +852,10 @@
   $('btn-pause').addEventListener('click', togglePause);
   $('btn-resume').addEventListener('click', togglePause);
   $('btn-home').addEventListener('click', () => {
-    const sp = World.spawnPoint();
     players.forEach((p, i) => {
-      const side = players.length === 2 ? (i === 0 ? -1.6 : 1.6) : 0;
-      p.x = sp.x + Math.cos(sp.heading) * side; p.y = sp.y + Math.sin(sp.heading) * side;
-      p.heading = sp.heading; p.speed = 0; p.gait = 0; p.camInit = false;
+      const sp = World.spawnPoint(players.length === 2 ? i : -1);
+      p.x = sp.x; p.y = sp.y;
+      p.heading = sp.heading; p.speed = 0; p.gait = 0; p.jumpT = -1; p.jumpY = 0; p.camInit = false;
     });
     togglePause();
   });
