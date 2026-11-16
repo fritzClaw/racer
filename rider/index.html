@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#2c3b22">
+  <title>Ausritt in Nörvenich</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Gemeinsame Anzeige oben in der Mitte -->
+  <div id="hud-top" hidden>
+    <div class="counter" title="Gesammelte Hufeisen"><svg class="shoe-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h4v9a3 3 0 0 0 6 0V3h4v9a7 7 0 0 1-14 0z"/></svg><span id="cnt-shoes">0</span><small>/<span id="cnt-shoes-all">0</span></small></div>
+    <div class="counter" title="Entdeckte Orte">📍<span id="cnt-places">0</span><small>/<span id="cnt-places-all">0</span></small></div>
+    <div class="hud-buttons">
+      <button id="btn-map" class="icon-btn" aria-label="Große Karte" title="Große Karte (K)">🗺️</button>
+      <button id="btn-mute" class="icon-btn" aria-label="Ton an/aus" title="Ton an/aus (M)">🔊</button>
+      <button id="btn-pause" class="icon-btn" aria-label="Pause" title="Pause (P)">⏸</button>
+    </div>
+  </div>
+
+  <!-- Anzeige je Reiterin: wird im Spiel zweimal erzeugt -->
+  <template id="tpl-hud">
+    <div class="pview">
+      <div class="p-info">
+        <div class="p-name"><span class="p-rider"></span> <small>auf <span class="p-horse"></span></small></div>
+        <div class="p-region"></div>
+        <div class="gaits">
+          <span data-g="0">Halt</span><span data-g="1">Schritt</span><span data-g="2">Trab</span><span data-g="3">Galopp</span>
+        </div>
+        <div class="stamina"><div class="stamina-fill"></div><span>Ausdauer</span></div>
+      </div>
+      <canvas class="minimap" width="160" height="160"></canvas>
+      <div class="p-msg" hidden></div>
+      <div class="p-banner" hidden></div>
+      <div class="p-touch" hidden>
+        <div class="steer" role="slider" aria-label="Lenken" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
+          <span class="steer-hint l">‹</span><span class="steer-hint r">›</span>
+          <div class="steer-knob"></div>
+        </div>
+        <div class="t-buttons">
+          <button class="t-btn jump" data-act="jump" aria-label="Springen">Sprung</button>
+          <div class="t-col">
+            <button class="t-btn up" data-act="up" aria-label="Schneller">▲</button>
+            <button class="t-btn down" data-act="down" aria-label="Langsamer">▼</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+  <div id="views"></div>
+
+  <!-- Große Karte -->
+  <section id="screen-map" class="map-screen" hidden>
+    <canvas id="bigmap"></canvas>
+    <div class="map-side">
+      <h2>Gemeinde Nörvenich</h2>
+      <p class="muted small">Gelber Stern: schon entdeckt. Fragezeichen: noch nicht gefunden. Unter jedem Ortsnamen steht, wie viele Hufeisen dort schon eingesammelt sind.</p>
+      <button id="btn-map-close" class="btn primary" data-primary>Weiterreiten</button>
+    </div>
+  </section>
+
+  <!-- Laden -->
+  <section id="screen-loading" class="screen" hidden>
+    <div class="panel narrow">
+      <h2>Nörvenich wird aufgebaut …</h2>
+      <p class="subtitle">Über 8 000 Häuser, 500 km Wege und viele Bäume. Das dauert einen Moment.</p>
+      <div class="spinner"></div>
+    </div>
+  </section>
+
+  <!-- Hauptmenü -->
+  <section id="screen-main" class="screen">
+    <div class="panel narrow">
+      <h1 class="title">Ausritt<span>in Nörvenich</span></h1>
+      <p class="subtitle">Zwei Reiterinnen, zwei Pferde und eine ganze Gemeinde: Reitet durch alle 14 Ortsteile, sammelt goldene Hufeisen, füttert eure Pferde und springt über Baumstämme und Hecken.</p>
+      <button id="btn-start" class="btn primary big" data-primary>Losreiten</button>
+      <button id="btn-reset" class="btn big" hidden>Neu anfangen</button>
+      <a class="btn big link-btn" href="../index.html">Alle Spiele</a>
+      <p id="save-info" class="muted small" hidden></p>
+      <p id="webgl-error" class="error" hidden>Dein Browser unterstützt leider kein WebGL. Das brauchst du für die 3D-Ansicht.</p>
+      <div class="help">
+        <h3>Steuerung</h3>
+        <table class="keys">
+          <tr><th></th><th>Reiterin 1</th><th>Reiterin 2</th></tr>
+          <tr><td>schneller</td><td><kbd>W</kbd></td><td><kbd>↑</kbd></td></tr>
+          <tr><td>langsamer</td><td><kbd>S</kbd></td><td><kbd>↓</kbd></td></tr>
+          <tr><td>lenken</td><td><kbd>A</kbd> <kbd>D</kbd></td><td><kbd>←</kbd> <kbd>→</kbd></td></tr>
+          <tr><td>springen</td><td><kbd>Leertaste</kbd></td><td><kbd>Enter</kbd></td></tr>
+        </table>
+        <ul>
+          <li><kbd>K</kbd> große Karte · <kbd>P</kbd> / <kbd>Esc</kbd> Pause · <kbd>M</kbd> Ton</li>
+          <li>Gamepads gehen auch: Stick lenkt, Steuerkreuz schaltet die Gangart, <kbd>A</kbd> springt</li>
+          <li>Auf dem Tablet hat jede Bildschirmhälfte eigene Knöpfe</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Reiterinnen und Pferde wählen -->
+  <section id="screen-setup" class="screen" hidden>
+    <div class="panel wide">
+      <h2>Wer reitet mit?</h2>
+      <div id="count-list" class="segmented">
+        <button class="seg-btn" data-count="1">Eine Reiterin</button>
+        <button class="seg-btn" data-count="2">Zwei Reiterinnen</button>
+      </div>
+      <div id="rider-cards" class="rider-cards"></div>
+      <div class="nav">
+        <button class="btn" data-goto="main">Zurück</button>
+        <button id="btn-go" class="btn primary" data-primary>Los geht's!</button>
+      </div>
+    </div>
+  </section>
+
+  <template id="tpl-rider">
+    <div class="rider-card">
+      <div class="rider-head">
+        <div class="avatar"><div class="av-hair"></div><div class="av-face"></div><div class="av-helmet"></div></div>
+        <div>
+          <h3 class="rider-title"></h3>
+          <div class="hair-switch segmented small" hidden>
+            <button class="seg-btn" data-hair="blond">Blond</button>
+            <button class="seg-btn" data-hair="red">Rote Haare</button>
+          </div>
+        </div>
+      </div>
+      <label>Name der Reiterin <input class="in-name" maxlength="14" autocomplete="off"></label>
+      <label>Name des Pferdes <input class="in-horse" maxlength="14" autocomplete="off"></label>
+      <div class="coat-list"></div>
+    </div>
+  </template>
+
+  <!-- Pause -->
+  <section id="screen-pause" class="screen dim" hidden>
+    <div class="panel narrow">
+      <h2>Pause</h2>
+      <p id="pause-stats" class="subtitle"></p>
+      <button id="btn-resume" class="btn primary big" data-primary>Weiterreiten</button>
+      <button id="btn-home" class="btn big">Zurück zum Gestüt</button>
+      <button id="btn-quit" class="btn big">Zum Hauptmenü</button>
+    </div>
+  </section>
+
+  <div id="osm-credit">Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende</div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="js/mapdata.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/horse.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/minimap.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

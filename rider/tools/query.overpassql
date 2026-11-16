@@ -1,0 +1,25 @@
+[out:json][timeout:180];
+rel(163311)->.b; .b out geom;
+rel(163311); map_to_area->.a;
+(
+ way(area.a)[highway];
+ way(area.a)[building];
+ way(area.a)[waterway];
+ way(area.a)[natural=water];
+ way(area.a)[landuse];
+ way(area.a)[natural=wood];
+ way(area.a)[leisure];
+ way(area.a)[aeroway];
+ way(area.a)[railway];
+ way(area.a)[barrier=hedge];
+ node(area.a)[place];
+ node(area.a)[historic];
+ node(area.a)[amenity=place_of_worship];
+ node(area.a)[tourism];
+ way(area.a)[historic];
+ way(area.a)[amenity=place_of_worship];
+ relation(area.a)[landuse];
+ relation(area.a)[natural=wood];
+ relation(area.a)[building];
+);
+out geom;
