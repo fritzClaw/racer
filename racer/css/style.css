@@ -422,3 +422,5 @@ body.touch .hud-speed { bottom: max(110px, calc(env(safe-area-inset-bottom) + 10
   .steer { height: 70px; }
   .steer-knob { width: 56px; height: 56px; }
 }
+
+a.link-btn { text-decoration: none; text-align: center; }
